@@ -2,6 +2,11 @@ package main;
 
 import java.io.File;
 import java.util.List;
+import java.util.Random;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 import com.amazonaws.regions.Regions;
 import com.amazonaws.services.s3.AmazonS3;
@@ -10,9 +15,11 @@ import com.amazonaws.services.s3.model.ListObjectsV2Result;
 import com.amazonaws.services.s3.model.S3ObjectSummary;
 
 public class Sender {
-	private final String bucketName;
-	private final Regions region;
+	private String bucketName;
+	private Regions region;
 	private AmazonS3 s3;
+	List<S3ObjectSummary> listObjects;
+	private int code;
 
 	public static void main(String args[]) {
 		new Sender();
@@ -21,39 +28,38 @@ public class Sender {
 	public Sender() {
 
 		// initInfomation
-		bucketName = "mangmaytinhbucket1";
-		region = Regions.AP_SOUTHEAST_1;
+		initInformation();
 
 		// connect to bucket
-		s3 = null;
-		connectToBucketSender();
-		System.out.println("Connect Successfully !");
+		connectToBucket();
+
+		// get Receiver connection status
+		boolean connected = checkConnected();
 
 		// get bucket objects
-		List<S3ObjectSummary> listObjects = null;
-		listObjects = getBucketObject();
-		System.out.println("Get Object List Successfully !");
+		getBucketObject();
 
 		// clear bucket
-		for (S3ObjectSummary os : listObjects) {
-			s3.deleteObject(bucketName, os.getKey());
+		clearBucket();
+		
+		//delete Bucket if Receiver is not connected
+		if(!connected) {
+			System.out.println("Time out ! Receiver is not connected !");
+			deleteBucket();
+			return;
+		} else {
+			System.out.println("Receiver is connected !");
 		}
-		System.out.println("Clear Bucket Successfully !");
 
 		// Upload file to bucket
-		File file = new File("./src/main/resources/1.png");
-		s3.putObject(bucketName, file.getName(), file);
-		System.out.println("Upload File Successful !");
-
-		// Create Send Request
-		String SENT_REQUEST = "UPLOAD_OK";
-		s3.putObject(bucketName, SENT_REQUEST, "");
-		System.out.println("Create Upload Request Successfully !");
+		uploadFile();
 
 		// Waiting for Receiver to download
-		System.out.println("Waiting for Receiver to download");
+		System.out.println("Waiting for Receiver to download...");
 		boolean isReceived = false;
-		while (!isReceived) {
+		long timeLimit = 60000;
+		long timeStart = System.currentTimeMillis();
+		while (!isReceived && (System.currentTimeMillis()-timeStart) < timeLimit ) {
 			try {
 				Thread.sleep(3000);
 			} catch (InterruptedException e) {
@@ -64,30 +70,92 @@ public class Sender {
 				isReceived = true;
 			}
 		}
-		System.out.println("Receiver has downloaded Successfully");
+		if(isReceived)
+			System.out.println("Receiver has downloaded Successfully !");
+		else
+			System.out.println("Receiver has NOT downloaded files !");
+		
+		// get bucket objects
+		getBucketObject();
 
 		// clear Bucket
-		for (S3ObjectSummary os : listObjects) {
-			s3.deleteObject(bucketName, os.getKey());
-		}
-		System.out.println("Clear Bucket Successfully !");
+		clearBucket();
+
+		// delete Bucket
+		deleteBucket();
 
 		// Close connection
 		System.out.println("Connection Closed Successfully !");
 
 	}
 
-	public void connectToBucketSender() {
-		s3 = AmazonS3ClientBuilder.standard().withRegion(region).build();
-		if (!s3.doesBucketExistV2(bucketName)) {
-			System.out.println("Bucket is NOT Exist !\nCreating Bucket");
-			s3.createBucket(bucketName);
-			System.out.println("Create Successful !");
-		}
+	public void initInformation() {
+		Random r = new Random();
+		code = Math.abs(r.nextInt()) % 1000;
+		bucketName = "mangmaytinhbucket" + code;
+		region = Regions.AP_SOUTHEAST_1;
 	}
 
-	public List<S3ObjectSummary> getBucketObject() {
+	public void connectToBucket() {
+		s3 = AmazonS3ClientBuilder.standard().withRegion(region).build();
+		if (!s3.doesBucketExistV2(bucketName)) {
+			System.out.println("Bucket is available !\nCreating Bucket...");
+			s3.createBucket(bucketName);
+			System.out.println("Create Successful !");
+		} else {
+			System.out.println("Bucket is in using !\nChanging Code...");
+			initInformation();
+		}
+		System.out.println("Connect Successfully !");
+		System.out.println("Send this code for Receiver : " + code);
+	}
+
+	public boolean checkConnected() {
+		s3.putObject(bucketName, "SenderConnected", "");
+		boolean isReceiverConnected = false;
+		long timeLimit = 30000;
+		long timeStart = System.currentTimeMillis();
+		while (!isReceiverConnected && (System.currentTimeMillis()-timeStart) < timeLimit ) {
+			if (s3.doesObjectExist(bucketName, "ReceiverConnected"))
+				isReceiverConnected = true;
+			try {
+				TimeUnit.SECONDS.sleep(3);
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+		}
+		return isReceiverConnected;
+	}
+
+	public void getBucketObject() {
 		ListObjectsV2Result list = s3.listObjectsV2(bucketName);
-		return list.getObjectSummaries();
+		listObjects = list.getObjectSummaries();
+		System.out.println("Get Object List Successfully !");
+	}
+	
+	public void clearBucket() {
+		for (S3ObjectSummary os : listObjects) {
+			s3.deleteObject(bucketName, os.getKey());
+		}
+		try {
+			Thread.sleep(3000);
+		} catch (InterruptedException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		System.out.println("Clear Bucket Successfully !");
+	}
+	
+	public void deleteBucket() {
+		s3.deleteBucket(bucketName);
+	}
+	
+	public void  uploadFile() {
+		File file = new File("./src/main/resources/1.png");
+		s3.putObject(bucketName, file.getName(), file);
+		System.out.println("Upload File Successful !");
+		String SENT_REQUEST = "UPLOAD_OK";
+		s3.putObject(bucketName, SENT_REQUEST, "");
+		System.out.println("Create Upload Request Successfully !");
 	}
 }
