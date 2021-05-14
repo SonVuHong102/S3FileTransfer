@@ -3,6 +3,7 @@ package main;
 import java.io.File;
 import java.util.List;
 import java.util.Random;
+import java.util.Scanner;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
@@ -20,6 +21,7 @@ public class Sender {
 	private AmazonS3 s3;
 	List<S3ObjectSummary> listObjects;
 	private int code;
+	private long sizeLimit = 26214400; //25MB
 
 	public static void main(String args[]) {
 		new Sender();
@@ -148,10 +150,31 @@ public class Sender {
 	
 	public void deleteBucket() {
 		s3.deleteBucket(bucketName);
+		System.out.println("Delete Bucket Successfully !");
 	}
 	
 	public void  uploadFile() {
-		File file = new File("./src/main/resources/1.png");
+		Scanner inp = new Scanner(System.in);
+		System.out.println("Enter File Path : ");
+		String path = inp.nextLine();
+//		File file = new File("./src/main/resources/1.png");
+		File file = new File(path);
+		if(file.length() > sizeLimit) {
+			
+			System.out.println("File is too big !\nTry another file");
+			s3.putObject(bucketName, "UPLOAD_FAIL", "");
+			System.out.println("Delete Bucket in 5 seconds !");
+			try {
+				Thread.sleep(5000);
+			} catch (InterruptedException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+			getBucketObject();
+			clearBucket();
+			deleteBucket();
+			System.exit(1);
+		}
 		s3.putObject(bucketName, file.getName(), file);
 		System.out.println("Upload File Successful !");
 		String SENT_REQUEST = "UPLOAD_OK";

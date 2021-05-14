@@ -40,6 +40,8 @@ public class Receiver {
 		long timeStart = System.currentTimeMillis();
 		boolean isReceived = false;
 		while (!isReceived && (System.currentTimeMillis()-timeStart) < timeLimit) {
+			if (s3.doesObjectExist(bucketName, "UPLOAD_FAIL"))
+				break;
 			if (s3.doesObjectExist(bucketName, "UPLOAD_OK"))
 				isReceived = true;
 			try {
