@@ -1,12 +1,12 @@
 package main;
 
+import java.awt.datatransfer.StringSelection;
 import java.io.File;
 import java.util.List;
 import java.util.Random;
 import java.util.Scanner;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.ScheduledExecutorService;
+import java.util.Timer;
+import java.util.TimerTask;
 import java.util.concurrent.TimeUnit;
 
 import com.amazonaws.regions.Regions;
@@ -21,7 +21,8 @@ public class Sender {
 	private AmazonS3 s3;
 	List<S3ObjectSummary> listObjects;
 	private int code;
-	private long sizeLimit = 26214400; //25MB
+	private long sizeLimit = 26214400; // 25MB
+	private String path = "";
 
 	public static void main(String args[]) {
 		new Sender();
@@ -43,9 +44,9 @@ public class Sender {
 
 		// clear bucket
 		clearBucket();
-		
-		//delete Bucket if Receiver is not connected
-		if(!connected) {
+
+		// delete Bucket if Receiver is not connected
+		if (!connected) {
 			System.out.println("Time out ! Receiver is not connected !");
 			deleteBucket();
 			return;
@@ -61,7 +62,7 @@ public class Sender {
 		boolean isReceived = false;
 		long timeLimit = 60000;
 		long timeStart = System.currentTimeMillis();
-		while (!isReceived && (System.currentTimeMillis()-timeStart) < timeLimit ) {
+		while (!isReceived && (System.currentTimeMillis() - timeStart) < timeLimit) {
 			try {
 				Thread.sleep(3000);
 			} catch (InterruptedException e) {
@@ -72,11 +73,11 @@ public class Sender {
 				isReceived = true;
 			}
 		}
-		if(isReceived)
+		if (isReceived)
 			System.out.println("Receiver has downloaded Successfully !");
 		else
 			System.out.println("Receiver has NOT downloaded files !");
-		
+
 		// get bucket objects
 		getBucketObject();
 
@@ -117,7 +118,7 @@ public class Sender {
 		boolean isReceiverConnected = false;
 		long timeLimit = 30000;
 		long timeStart = System.currentTimeMillis();
-		while (!isReceiverConnected && (System.currentTimeMillis()-timeStart) < timeLimit ) {
+		while (!isReceiverConnected && (System.currentTimeMillis() - timeStart) < timeLimit) {
 			if (s3.doesObjectExist(bucketName, "ReceiverConnected"))
 				isReceiverConnected = true;
 			try {
@@ -134,7 +135,7 @@ public class Sender {
 		listObjects = list.getObjectSummaries();
 		System.out.println("Get Object List Successfully !");
 	}
-	
+
 	public void clearBucket() {
 		for (S3ObjectSummary os : listObjects) {
 			s3.deleteObject(bucketName, os.getKey());
@@ -147,20 +148,32 @@ public class Sender {
 		}
 		System.out.println("Clear Bucket Successfully !");
 	}
-	
+
 	public void deleteBucket() {
 		s3.deleteBucket(bucketName);
 		System.out.println("Delete Bucket Successfully !");
 	}
-	
-	public void  uploadFile() {
+
+	public void uploadFile() {
 		Scanner inp = new Scanner(System.in);
 		System.out.println("Enter File Path : ");
-		String path = inp.nextLine();
+		TimerTask task = new TimerTask() {
+			@Override
+			public void run() {
+				if (checkPath()) {
+					System.out.println("You did not enter file path !\nExitting..");
+					deleteBucket();
+				}
+			}
+		};
+		Timer timer = new Timer();
+		timer.schedule(task, 30 * 1000);
+		path = inp.nextLine();
+		timer.cancel();
 //		File file = new File("./src/main/resources/1.png");
 		File file = new File(path);
-		if(file.length() > sizeLimit) {
-			
+		if (file.length() > sizeLimit) {
+
 			System.out.println("File is too big !\nTry another file");
 			s3.putObject(bucketName, "UPLOAD_FAIL", "");
 			System.out.println("Delete Bucket in 5 seconds !");
@@ -180,5 +193,11 @@ public class Sender {
 		String SENT_REQUEST = "UPLOAD_OK";
 		s3.putObject(bucketName, SENT_REQUEST, "");
 		System.out.println("Create Upload Request Successfully !");
+	}
+
+	public boolean checkPath() {
+		if (path.compareTo("") == 0)
+			return true;
+		return false;
 	}
 }

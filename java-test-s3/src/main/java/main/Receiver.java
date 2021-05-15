@@ -93,7 +93,6 @@ public class Receiver {
 	}
 	
 	public void initInformation() {
-		Random r = new Random();
 		System.out.println("Enter code from Sender : ");
 		Scanner inp = new Scanner(System.in);
 		int code = inp.nextInt();
