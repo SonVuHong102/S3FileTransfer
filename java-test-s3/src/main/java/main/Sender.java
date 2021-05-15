@@ -163,6 +163,7 @@ public class Sender {
 				if (checkPath()) {
 					System.out.println("You did not enter file path !\nExitting..");
 					deleteBucket();
+					System.exit(1);
 				}
 			}
 		};
